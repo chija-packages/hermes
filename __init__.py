@@ -40,7 +40,7 @@ def _handle_chija_connect(params: dict[str, Any], **kwargs: Any) -> str:
     if isinstance(profiles, str):
         profiles = [p.strip() for p in profiles.split(",") if p.strip()]
     device_label = str(params.get("device_label") or params.get("deviceLabel") or "").strip()
-    timeout_seconds = int(params.get("timeout_seconds") or 600)
+    timeout_seconds = int(params.get("timeout_seconds") or 1200)
     messages: list[str] = []
 
     try:
@@ -156,7 +156,7 @@ CHIJA_CONNECT_SCHEMA = {
                 "description": "Optional subset of Hermes profile ids; default discovers all",
             },
             "device_label": {"type": "string", "description": "Optional human device label"},
-            "timeout_seconds": {"type": "integer", "description": "Poll timeout (default 600)"},
+            "timeout_seconds": {"type": "integer", "description": "Poll timeout (default 1200; covers 15m device-auth TTL)"},
         },
         "required": ["base_url"],
     },

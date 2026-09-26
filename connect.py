@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-PLUGIN_VERSION = "0.2.1"
+PLUGIN_VERSION = "0.2.2"
 CAPABILITIES = [
     "invocation.accept",
     "run.progress",
@@ -129,7 +129,7 @@ def run_connect(
     gateway_instance_id: str = "",
     profiles: list[str] | None = None,
     device_label: str = "",
-    timeout_seconds: int = 600,
+    timeout_seconds: int = 1_200,
     on_message: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Start Device Auth, wait for ADMIN approval, save per-profile credentials.
@@ -173,7 +173,7 @@ def run_connect(
     )
     user_code = created.get("userCode") or ""
     verification = created.get("verificationUri") or ""
-    expires_in = int(created.get("expiresIn") or 180)
+    expires_in = int(created.get("expiresIn") or 900)
     interval = max(1, int(created.get("interval") or 5))
     device_code = created.get("deviceCode") or ""
     if not user_code or not verification or not device_code:
