@@ -17,7 +17,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 CONNECTOR_NAME = "hermes-channel-chija"
-DEFAULT_RELEASE_TAG = "v0.2.0"
+DEFAULT_RELEASE_TAG = "v0.2.5"
 DEFAULT_RELEASE_BASE = "https://github.com/chija-packages/hermes/releases/download"
 
 
@@ -102,17 +102,41 @@ def find_connector_bin() -> str | None:
     return None
 
 
+def release_tag_path() -> Path:
+    return installed_bin_path().with_name(f"{CONNECTOR_NAME}.release-tag")
+
+
 def ensure_connector_bin(*, download: bool = True) -> str:
-    existing = find_connector_bin()
-    if existing:
-        return existing
+    env = os.environ.get("HERMES_CHIJA_CONNECTOR_BIN", "").strip()
+    if env and Path(env).is_file():
+        return env
+
+    tag = (os.environ.get("HERMES_CHIJA_CONNECTOR_RELEASE") or DEFAULT_RELEASE_TAG).strip()
+    dest = installed_bin_path()
+    tag_file = release_tag_path()
+    if (
+        dest.is_file()
+        and os.access(dest, os.X_OK)
+        and tag_file.is_file()
+        and tag_file.read_text(encoding="utf-8").strip() == tag
+    ):
+        return str(dest)
+
+    which = shutil.which(CONNECTOR_NAME)
+    if which and Path(which).resolve() != dest.resolve():
+        # Explicit PATH install — do not overwrite.
+        return which
+
     if not download:
+        existing = find_connector_bin()
+        if existing:
+            return existing
         raise RuntimeError(
             f"{CONNECTOR_NAME} not found. Install from "
             f"{DEFAULT_RELEASE_BASE}/{DEFAULT_RELEASE_TAG}/ or set HERMES_CHIJA_CONNECTOR_BIN."
         )
-    url = release_asset_url()
-    dest = installed_bin_path()
+
+    url = release_asset_url(tag)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".download")
     logger.info("downloading %s -> %s", url, dest)
@@ -125,6 +149,11 @@ def ensure_connector_bin(*, download: bool = True) -> str:
         ) from err
     tmp.chmod(0o755)
     tmp.replace(dest)
+    tag_file.write_text(tag + "\n", encoding="utf-8")
+    try:
+        os.chmod(tag_file, 0o600)
+    except OSError:
+        pass
     return str(dest)
 
 
@@ -180,11 +209,12 @@ def ensure_connector_running(*, download_bin: bool = True) -> dict[str, Any]:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     pid_file = pid_path()
     pid_file.parent.mkdir(parents=True, exist_ok=True)
+    bindings = bindings_root()
 
     log_fh = open(log_file, "a", encoding="utf-8")  # noqa: SIM115 — kept open for child lifetime
     try:
         proc = subprocess.Popen(
-            [binary, "run"],
+            [binary, "run", "--bindings-dir", str(bindings)],
             stdin=subprocess.DEVNULL,
             stdout=log_fh,
             stderr=subprocess.STDOUT,
