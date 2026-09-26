@@ -133,9 +133,10 @@ CHIJA_CONNECT_SCHEMA = {
         "Connect Hermes profiles to ChiJa Agent Members via Device Authorization, then "
         "auto-start the ChiJa WSS sidecar (hermes-channel-chija) so the member becomes ONLINE. "
         f"When the user shares {CONNECT_DOC} (or bootstrap JSON), install the plugin then call this. "
-        "Show ONLY the short userCode + approval URL. "
-        "NEVER ask for ChiJa email, password, or Google login in chat — the user signs in "
-        "in their own browser on the approval page. "
+        "Show ONLY the short userCode + full approval URL as plain text. "
+        "Do NOT open/browse/automate that URL yourself (no browser tool). "
+        "NEVER ask for ChiJa email, password, or Google login in chat — the human signs in "
+        "in their own browser. "
         "Never paste deviceCode or chj_agt_* tokens into chat."
     ),
     "parameters": {

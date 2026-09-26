@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.2.1"
 CAPABILITIES = [
     "invocation.accept",
     "run.progress",
@@ -180,12 +180,13 @@ def run_connect(
         raise RuntimeError("device authorization response incomplete")
 
     log(f"ChiJa 연결 승인 코드: {user_code}")
-    log(f"승인 페이지: {verification}?userCode={user_code}")
+    log(f"승인 페이지(사람이 직접 열 것): {verification}?userCode={user_code}")
     log(f"만료: 약 {expires_in}초 · Profiles: {', '.join(selected)}")
     log(
-        "사용자에게: 위 승인 페이지를 브라우저에서 열어 ChiJa에 직접 로그인한 뒤 "
-        "ADMIN으로 승인하세요. 이메일·비밀번호·Google 계정은 채팅으로 묻지 마세요. "
-        "(짧은 코드만으로는 자격 증명이 발급되지 않습니다)"
+        "IMPORTANT: 위 URL을 Agent/브라우저 도구로 열지 마세요. "
+        "대화창에 코드와 URL 텍스트만 보여 주고, 사람이 자기 브라우저에서 "
+        "ChiJa 로그인·ADMIN 승인할 때까지 기다리세요. "
+        "이메일·비밀번호·Google 인증은 채팅으로 묻지 마세요."
     )
 
     deadline = time.time() + min(timeout_seconds, expires_in + 30)
