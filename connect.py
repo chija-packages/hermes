@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import time
@@ -12,7 +13,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-PLUGIN_VERSION = "0.2.3"
+PLUGIN_VERSION = "0.2.4"
 CAPABILITIES = [
     "invocation.accept",
     "run.progress",
@@ -21,43 +22,109 @@ CAPABILITIES = [
     "session.resume",
 ]
 
+# Hermes `profile list` may prefix the active row with ◆ / box-drawing / bullets.
+_PROFILE_MARKERS = frozenset("◆◇●○■□▪▫*•·►▶→✓✔✖✗⚠⚠️★☆+")
+_PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+_HEADER_TOKENS = frozenset(
+    {
+        "NAME",
+        "Name",
+        "Profile",
+        "Profiles",
+        "PROFILE",
+        "Active",
+        "STATUS",
+        "Status",
+        "---",
+    }
+)
+
 
 def bindings_root() -> Path:
     config = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
     return config / "chija" / "hermes-channel" / "bindings"
 
 
-def discover_profiles(hermes_bin: str = "hermes") -> list[str]:
-    try:
-        out = subprocess.check_output(
-            [hermes_bin, "profile", "list"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=30,
-        )
-        ids: list[str] = []
-        seen: set[str] = set()
-        for line in out.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            token = line.split()[0].strip("│|")
-            if token in {"NAME", "Profile", "---", ""}:
-                continue
-            if token not in seen:
-                seen.add(token)
-                ids.append(token)
-        if ids:
-            return ids
-    except (OSError, subprocess.SubprocessError):
-        pass
+def normalize_profile_token(raw: str) -> str | None:
+    """Turn a CLI table cell into a Hermes profile id, or None if not a profile."""
+    token = (raw or "").strip().strip("│|┃▌▐")
+    if not token:
+        return None
+    while token and (token[0] in _PROFILE_MARKERS or not token[0].isalnum()):
+        # Strip markers / punctuation prefixes (e.g. ◆default → default)
+        if token[0].isalnum():
+            break
+        token = token[1:].lstrip()
+    if not token or token in _HEADER_TOKENS:
+        return None
+    if set(token) <= set("-─━═|_= "):
+        return None
+    # Warning / prose lines often start with non-id words
+    if not _PROFILE_NAME_RE.fullmatch(token):
+        return None
+    return token
 
-    root = Path.home() / ".hermes"
-    ids = []
+
+_NOISE_TOKENS = frozenset(
+    {
+        "Restart",
+        "Warning",
+        "Warn",
+        "Note",
+        "Error",
+        "Failed",
+        "Success",
+        "Gateway",
+        "gateway",
+        "plugin",
+        "Plugin",
+        "changes",
+        "after",
+        "Please",
+        "please",
+    }
+)
+
+
+def parse_profile_list_output(out: str) -> list[str]:
+    """Parse `hermes profile list` stdout into profile ids (order preserved)."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for line in (out or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Skip warning / instruction prose (e.g. "⚠ Restart gateway…")
+        if line[0] in "⚠⚠️!" or line.lower().startswith(("warning", "error", "note:")):
+            continue
+        # Prefer first cell; also accept "◆ default" / "◆default  (active)"
+        parts = line.replace("\t", " ").split()
+        if not parts:
+            continue
+        # Long prose rows are not profile tables
+        if len(parts) >= 4 and not any(p.startswith("◆") or p.startswith("│") for p in parts[:2]):
+            continue
+        candidates = [parts[0]]
+        if len(parts) >= 2 and not parts[0][-1:].isalnum():
+            candidates.append(parts[0] + parts[1])
+            candidates.append(parts[1])
+        for cand in candidates:
+            name = normalize_profile_token(cand)
+            if name and name not in _NOISE_TOKENS and name not in seen:
+                seen.add(name)
+                ids.append(name)
+                break
+    return ids
+
+
+def discover_profiles_from_fs(root: Path | None = None) -> list[str]:
+    """Discover profiles from ~/.hermes (+ profiles/*). Stable source of truth."""
+    root = root if root is not None else (Path.home() / ".hermes")
+    ids: list[str] = []
     seen: set[str] = set()
 
     def add(name: str) -> None:
-        if name not in seen:
+        if name and name not in seen and _PROFILE_NAME_RE.fullmatch(name):
             seen.add(name)
             ids.append(name)
 
@@ -68,9 +135,43 @@ def discover_profiles(hermes_bin: str = "hermes") -> list[str]:
         for child in sorted(profiles_dir.iterdir()):
             if child.is_dir() and _is_hermes_home(child):
                 add(child.name)
+    return ids
+
+
+def discover_profiles(hermes_bin: str = "hermes") -> list[str]:
+    """Discover Hermes profile ids.
+
+    Filesystem under ~/.hermes is preferred (stable). CLI output is merged after
+    normalizing markers like ◆default → default; invalid rows are dropped.
+    """
+    from_fs = discover_profiles_from_fs()
+    from_cli: list[str] = []
+    try:
+        out = subprocess.check_output(
+            [hermes_bin, "profile", "list"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
+        from_cli = parse_profile_list_output(out)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    ids: list[str] = []
+    seen: set[str] = set()
+
+    def add_all(names: list[str]) -> None:
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                ids.append(name)
+
+    # FS first so default/profiles win over noisy CLI chrome.
+    add_all(from_fs)
+    add_all(from_cli)
     if not ids:
         raise RuntimeError(
-            f"no Hermes profiles found under {root}; create one then retry chija_connect"
+            "no Hermes profiles found under ~/.hermes; create one then retry chija_connect"
         )
     return ids
 
@@ -103,9 +204,19 @@ def _api_post(base_url: str, path: str, body: dict[str, Any], token: str = "") -
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
+            if err.code == 429:
+                raise RuntimeError(
+                    "ChiJa 429: Too Many Requests. Do NOT retry or bypass with curl/scripts. "
+                    "Wait 15–20 minutes, then call chija_connect once."
+                ) from exc
             raise RuntimeError(f"ChiJa HTTP {err.code}") from exc
         message = (parsed.get("error") or {}).get("message") or f"ChiJa HTTP {err.code}"
         code = (parsed.get("error") or {}).get("code") or str(err.code)
+        if err.code == 429 or str(code) in {"429", "AGENT_DEVICE_AUTHORIZATION_RATE_LIMITED"}:
+            raise RuntimeError(
+                f"ChiJa {code}: {message}. Do NOT retry or bypass with curl/scripts. "
+                "Wait 15–20 minutes, then call chija_connect once."
+            ) from err
         raise RuntimeError(f"ChiJa {code}: {message}") from err
 
     parsed = json.loads(raw)
