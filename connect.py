@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-PLUGIN_VERSION = "0.2.2"
+PLUGIN_VERSION = "0.2.3"
 CAPABILITIES = [
     "invocation.accept",
     "run.progress",
@@ -183,8 +183,9 @@ def run_connect(
     log(f"승인 페이지(사람이 직접 열 것): {verification}?userCode={user_code}")
     log(f"만료: 약 {expires_in}초 · Profiles: {', '.join(selected)}")
     log(
-        "IMPORTANT: 위 URL을 Agent/브라우저 도구로 열지 마세요. "
-        "대화창에 코드와 URL 텍스트만 보여 주고, 사람이 자기 브라우저에서 "
+        "IMPORTANT: 위 승인 URL을 직접 호출하거나 열지 마세요. "
+        "curl, fetch, 브라우저 도구를 쓰지 마세요. "
+        "승인 코드와 URL 텍스트만 사용자에게 전달하고, 사용자가 자기 브라우저에서 "
         "ChiJa 로그인·ADMIN 승인할 때까지 기다리세요. "
         "이메일·비밀번호·Google 인증은 채팅으로 묻지 마세요."
     )
