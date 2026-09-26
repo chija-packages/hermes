@@ -4,38 +4,20 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import shutil
-from pathlib import Path
 from typing import Any
 
 try:
     from . import connect as chija_connect_impl
+    from . import supervisor as supervisor_impl
 except ImportError:  # loaded as a flat plugin directory
     import connect as chija_connect_impl  # type: ignore
+    import supervisor as supervisor_impl  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 PLUGIN_VERSION = chija_connect_impl.PLUGIN_VERSION
 CONNECT_DOC = "https://app.chija.io/connect/hermes"
 BOOTSTRAP_PATH = "/.well-known/chija-agent-bootstrap-hermes.json"
-
-
-def _find_connector_bin() -> str | None:
-    env = os.environ.get("HERMES_CHIJA_CONNECTOR_BIN", "").strip()
-    if env and Path(env).is_file():
-        return env
-    which = shutil.which("hermes-channel-chija")
-    if which:
-        return which
-    here = Path(__file__).resolve().parent
-    for candidate in (
-        here.parents[1] / "tools" / "hermes-channel-chija" / "bin" / "hermes-channel-chija",
-        here.parents[1] / "tools" / "hermes-channel-chija" / "bin" / "hermes-channel-chija.exe",
-    ):
-        if candidate.is_file():
-            return str(candidate)
-    return None
 
 
 def _handle_chija_connect(params: dict[str, Any], **kwargs: Any) -> str:
@@ -81,11 +63,26 @@ def _handle_chija_connect(params: dict[str, Any], **kwargs: Any) -> str:
             ensure_ascii=False,
         )
 
-    connector = _find_connector_bin()
-    next_step = result.get("next")
-    if connector:
-        next_step = f"{connector} run  (bindings already saved under {result.get('bindingsDir')})"
+    supervise: dict[str, Any]
+    try:
+        supervise = supervisor_impl.ensure_connector_running(download_bin=True)
+        if supervise.get("started"):
+            messages.append(
+                f"ChiJa WSS connector started (pid={supervise.get('pid')}). "
+                "Agent Member should become ONLINE shortly."
+            )
+        elif supervise.get("reason") == "already_running":
+            messages.append("ChiJa WSS connector already running.")
+        else:
+            messages.append(f"ChiJa WSS connector: {supervise.get('reason')}")
+    except Exception as err:  # noqa: BLE001
+        supervise = {"started": False, "error": str(err)}
+        messages.append(
+            f"ChiJa WSS connector auto-start failed: {err}. "
+            "Install binary via packages/hermes/install_connector.sh or set HERMES_CHIJA_CONNECTOR_BIN."
+        )
 
+    status = supervisor_impl.connector_status()
     return json.dumps(
         {
             "success": True,
@@ -93,8 +90,13 @@ def _handle_chija_connect(params: dict[str, Any], **kwargs: Any) -> str:
             "boundProfiles": result.get("boundProfiles"),
             "bindingsDir": result.get("bindingsDir"),
             "gatewayInstanceId": result.get("gatewayInstanceId"),
-            "connectorBinary": connector,
-            "next": next_step,
+            "connectorBinary": status.get("binary"),
+            "connector": status,
+            "supervise": supervise,
+            "next": (
+                "WSS auto-started. Confirm ACTIVE · ONLINE on ChiJa Agent Members. "
+                "Do not ask for email/password in chat."
+            ),
             "documentationUrl": CONNECT_DOC,
             "bootstrap": BOOTSTRAP_PATH,
         },
@@ -104,17 +106,19 @@ def _handle_chija_connect(params: dict[str, Any], **kwargs: Any) -> str:
 
 def _handle_chija_status(params: dict[str, Any], **kwargs: Any) -> str:
     del kwargs
-    connector = _find_connector_bin()
     root = chija_connect_impl.bindings_root()
     profiles_found: list[str] = []
     if root.is_dir():
         for child in sorted(root.iterdir()):
             if child.is_dir() and (child / "credentials.json").is_file():
                 profiles_found.append(child.name)
+    status = supervisor_impl.connector_status()
     return json.dumps(
         {
             "success": True,
-            "connectorBinary": connector,
+            "connector": status,
+            "connectorBinary": status.get("binary"),
+            "connectorRunning": status.get("running"),
             "bindingsDir": str(root),
             "boundProfiles": profiles_found,
             "documentationUrl": CONNECT_DOC,
@@ -126,10 +130,13 @@ def _handle_chija_status(params: dict[str, Any], **kwargs: Any) -> str:
 CHIJA_CONNECT_SCHEMA = {
     "name": "chija_connect",
     "description": (
-        "Connect Hermes profiles to ChiJa Agent Members via Device Authorization. "
-        f"When the user shares {CONNECT_DOC} (or the bootstrap JSON), call this after "
-        "installing the chija plugin. Shows a short userCode for ChiJa ADMIN approval; "
-        "never ask the user for pairing codes or paste deviceCode/credentials into chat."
+        "Connect Hermes profiles to ChiJa Agent Members via Device Authorization, then "
+        "auto-start the ChiJa WSS sidecar (hermes-channel-chija) so the member becomes ONLINE. "
+        f"When the user shares {CONNECT_DOC} (or bootstrap JSON), install the plugin then call this. "
+        "Show ONLY the short userCode + approval URL. "
+        "NEVER ask for ChiJa email, password, or Google login in chat — the user signs in "
+        "in their own browser on the approval page. "
+        "Never paste deviceCode or chj_agt_* tokens into chat."
     ),
     "parameters": {
         "type": "object",
@@ -156,7 +163,9 @@ CHIJA_CONNECT_SCHEMA = {
 
 CHIJA_STATUS_SCHEMA = {
     "name": "chija_status",
-    "description": "Show ChiJa Hermes connector binary path and bound profiles.",
+    "description": (
+        "Show ChiJa Hermes bindings, WSS connector binary path, and whether the sidecar is running."
+    ),
     "parameters": {"type": "object", "properties": {}},
 }
 
@@ -176,4 +185,16 @@ def register(ctx: Any) -> None:
         handler=_handle_chija_status,
         description=CHIJA_STATUS_SCHEMA["description"],
     )
-    logger.info("ChiJa Hermes plugin registered (chija_connect, chija_status)")
+
+    used_bg = supervisor_impl.try_register_background_service(ctx)
+    if supervisor_impl.has_bindings():
+        try:
+            result = supervisor_impl.ensure_connector_running(download_bin=True)
+            logger.info("ChiJa connector supervise on register: %s", result.get("reason"))
+        except Exception as err:  # noqa: BLE001
+            logger.warning("ChiJa connector auto-start on register failed: %s", err)
+
+    logger.info(
+        "ChiJa Hermes plugin registered (chija_connect, chija_status, bg_service=%s)",
+        used_bg,
+    )

@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 CAPABILITIES = [
     "invocation.accept",
     "run.progress",
@@ -182,7 +182,11 @@ def run_connect(
     log(f"ChiJa 연결 승인 코드: {user_code}")
     log(f"승인 페이지: {verification}?userCode={user_code}")
     log(f"만료: 약 {expires_in}초 · Profiles: {', '.join(selected)}")
-    log("ChiJa에 로그인한 뒤 ADMIN으로 승인하세요. (짧은 코드만으로는 자격 증명이 발급되지 않습니다)")
+    log(
+        "사용자에게: 위 승인 페이지를 브라우저에서 열어 ChiJa에 직접 로그인한 뒤 "
+        "ADMIN으로 승인하세요. 이메일·비밀번호·Google 계정은 채팅으로 묻지 마세요. "
+        "(짧은 코드만으로는 자격 증명이 발급되지 않습니다)"
+    )
 
     deadline = time.time() + min(timeout_seconds, expires_in + 30)
     approved: dict[str, Any] | None = None
@@ -275,8 +279,9 @@ def run_connect(
             f"요약: 성공 {ok} · 실패 {fail}",
         ],
         "next": (
-            "WSS 수신을 위해 hermes-channel-chija run 을 실행하세요 "
-            "(선택: HERMES_CHIJA_CONNECTOR_BIN). 페어링 Credential은 이미 저장되었습니다."
+            "ChiJa WSS connector will auto-start (OpenClaw-like). "
+            "Confirm ACTIVE · ONLINE on Agent Members. "
+            "Do not ask for email/password in chat."
         ),
     }
 
