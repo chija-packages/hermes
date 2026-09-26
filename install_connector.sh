@@ -2,7 +2,7 @@
 # Install hermes-channel-chija binary into ~/.config/chija/hermes-channel/bin/
 # Usage: bash install_connector.sh [release-tag]
 set -euo pipefail
-TAG="${1:-v0.2.5}"
+TAG="${1:-v0.2.6}"
 BASE="${HERMES_CHIJA_CONNECTOR_RELEASE_BASE:-https://github.com/chija-packages/hermes/releases/download}"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH_RAW="$(uname -m)"

@@ -15,7 +15,7 @@ Ops publishes the current pin:
 ```bash
 hermes plugins install chija-packages/hermes --enable
 # WSS sidecar binary (once per machine; also auto-downloaded by the plugin if missing):
-bash <(curl -fsSL https://raw.githubusercontent.com/chija-packages/hermes/main/install_connector.sh) v0.2.5
+bash <(curl -fsSL https://raw.githubusercontent.com/chija-packages/hermes/main/install_connector.sh) v0.2.6
 ```
 
 Or let `chija_connect` download `hermes-channel-chija` from GitHub Releases into `~/.config/chija/hermes-channel/bin/`.
