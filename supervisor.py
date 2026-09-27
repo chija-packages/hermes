@@ -179,16 +179,71 @@ def _spawn_kwargs() -> dict[str, Any]:
     return {"start_new_session": True}
 
 
-def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
+# WaitForSingleObject / OpenProcess. Signal 0 is not a liveness probe on Windows:
+# CPython maps it to CTRL_C_EVENT and GenerateConsoleCtrlEvent, which stops the
+# connector or raises WinError 87 for a CREATE_NO_WINDOW process.
+_WIN_SYNCHRONIZE = 0x00100000
+_WIN_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_WIN_WAIT_OBJECT_0 = 0
+_WIN_WAIT_TIMEOUT = 0x102
+_WIN_ERROR_ACCESS_DENIED = 5
+
+
+def _windows_liveness(*, opened: bool, last_error: int, wait_result: int | None) -> bool:
+    """Map an OpenProcess + WaitForSingleObject(0) result to alive/dead."""
+    if not opened:
+        return last_error == _WIN_ERROR_ACCESS_DENIED
+    if wait_result == _WIN_WAIT_TIMEOUT:
+        return True
+    if wait_result == _WIN_WAIT_OBJECT_0:
         return False
+    return True
+
+
+def _pid_alive_windows(pid: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    open_process = kernel32.OpenProcess
+    open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    open_process.restype = wintypes.HANDLE
+    wait_for = kernel32.WaitForSingleObject
+    wait_for.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    wait_for.restype = wintypes.DWORD
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+
+    access = _WIN_SYNCHRONIZE | _WIN_PROCESS_QUERY_LIMITED_INFORMATION
+    handle = open_process(access, False, pid)
+    if not handle:
+        return _windows_liveness(opened=False, last_error=ctypes.get_last_error(), wait_result=None)
+    try:
+        waited = int(wait_for(handle, 0))
+        return _windows_liveness(opened=True, last_error=0, wait_result=waited)
+    finally:
+        close_handle(handle)
+
+
+def _pid_alive_posix(pid: int) -> bool:
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
         return True
+    except OSError:
+        return False
     return True
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if platform.system().lower() == "windows":
+        return _pid_alive_windows(pid)
+    return _pid_alive_posix(pid)
 
 
 def connector_status() -> dict[str, Any]:
