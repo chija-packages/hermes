@@ -31,7 +31,10 @@ def bin_dir() -> Path:
 
 
 def installed_bin_path() -> Path:
-    return bin_dir() / CONNECTOR_NAME
+    name = CONNECTOR_NAME
+    if platform.system().lower() == "windows":
+        name += ".exe"
+    return bin_dir() / name
 
 
 def pid_path() -> Path:
@@ -63,6 +66,8 @@ def _platform_asset() -> tuple[str, str]:
         os_name = "darwin"
     elif system == "linux":
         os_name = "linux"
+    elif system == "windows":
+        os_name = "windows"
     else:
         raise RuntimeError(f"unsupported OS for {CONNECTOR_NAME}: {system}")
     if machine in {"x86_64", "amd64"}:
@@ -74,11 +79,19 @@ def _platform_asset() -> tuple[str, str]:
     return os_name, arch
 
 
+def release_asset_name(os_name: str | None = None, arch: str | None = None) -> str:
+    if os_name is None or arch is None:
+        os_name, arch = _platform_asset()
+    name = f"{CONNECTOR_NAME}-{os_name}-{arch}"
+    if os_name == "windows":
+        name += ".exe"
+    return name
+
+
 def release_asset_url(tag: str | None = None) -> str:
     tag = (tag or os.environ.get("HERMES_CHIJA_CONNECTOR_RELEASE") or DEFAULT_RELEASE_TAG).strip()
     base = (os.environ.get("HERMES_CHIJA_CONNECTOR_RELEASE_BASE") or DEFAULT_RELEASE_BASE).rstrip("/")
-    os_name, arch = _platform_asset()
-    return f"{base}/{tag}/{CONNECTOR_NAME}-{os_name}-{arch}"
+    return f"{base}/{tag}/{release_asset_name()}"
 
 
 def find_connector_bin() -> str | None:
@@ -157,6 +170,15 @@ def ensure_connector_bin(*, download: bool = True) -> str:
     return str(dest)
 
 
+def _spawn_kwargs() -> dict[str, Any]:
+    """Detach the sidecar. Windows has no setsid; a new process group hides the console."""
+    if platform.system().lower() == "windows":
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        return {"creationflags": flags | no_window}
+    return {"start_new_session": True}
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -218,8 +240,8 @@ def ensure_connector_running(*, download_bin: bool = True) -> dict[str, Any]:
             stdin=subprocess.DEVNULL,
             stdout=log_fh,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
             close_fds=True,
+            **_spawn_kwargs(),
         )
     finally:
         log_fh.close()

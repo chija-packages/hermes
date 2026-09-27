@@ -20,6 +20,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/chija-packages/hermes/main/i
 
 Or let `chija_connect` download `hermes-channel-chija` from GitHub Releases into `~/.config/chija/hermes-channel/bin/`.
 
+Release assets: `darwin` and `linux` (`amd64`, `arm64`), plus `hermes-channel-chija-windows-amd64.exe` and `hermes-channel-chija-windows-arm64.exe`. On Windows, run `install_connector.sh` from Git Bash, or let the plugin download the `.exe`.
+
 ## After pairing
 
 Plugin auto-starts `hermes-channel-chija run` (pid file + log under `~/.config/chija/hermes-channel/`).  

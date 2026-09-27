@@ -5,7 +5,7 @@ set -euo pipefail
 TAG="${1:-v0.2.9}"
 BASE="${HERMES_CHIJA_CONNECTOR_RELEASE_BASE:-https://github.com/chija-packages/hermes/releases/download}"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-ARCH_RAW="$(uname -m)"
+ARCH_RAW="$(uname -m | tr '[:upper:]' '[:lower:]')"
 case "$ARCH_RAW" in
   x86_64|amd64) ARCH=amd64 ;;
   arm64|aarch64) ARCH=arm64 ;;
@@ -13,12 +13,20 @@ case "$ARCH_RAW" in
 esac
 case "$OS" in
   darwin|linux) ;;
+  mingw*|msys*|cygwin*) OS=windows ;;
   *) echo "unsupported OS: $OS" >&2; exit 1 ;;
 esac
 
+BIN_NAME="hermes-channel-chija"
+ASSET="hermes-channel-chija-${OS}-${ARCH}"
+if [[ "$OS" == "windows" ]]; then
+  BIN_NAME="${BIN_NAME}.exe"
+  ASSET="${ASSET}.exe"
+fi
+
 DEST_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/chija/hermes-channel/bin"
-DEST="$DEST_DIR/hermes-channel-chija"
-URL="$BASE/$TAG/hermes-channel-chija-${OS}-${ARCH}"
+DEST="$DEST_DIR/$BIN_NAME"
+URL="$BASE/$TAG/$ASSET"
 mkdir -p "$DEST_DIR"
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
