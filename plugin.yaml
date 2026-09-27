@@ -1,7 +1,11 @@
 name: chija
-version: 0.2.8
+version: 0.2.9
 description: ChiJa Agent Member guided connect — Device Auth, auto WSS sidecar, profile binding
 provides_tools:
   - chija_connect
   - chija_status
+  - chija_file_upload
+  - chija_attachment_add
+  - chija_file_attach
+  - chija_board_card_move
 provides_hooks: []

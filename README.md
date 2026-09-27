@@ -15,7 +15,7 @@ Ops publishes the current pin:
 ```bash
 hermes plugins install chija-packages/hermes --enable
 # WSS sidecar binary (once per machine; also auto-downloaded by the plugin if missing):
-bash <(curl -fsSL https://raw.githubusercontent.com/chija-packages/hermes/main/install_connector.sh) v0.2.8
+bash <(curl -fsSL https://raw.githubusercontent.com/chija-packages/hermes/main/install_connector.sh) v0.2.9
 ```
 
 Or let `chija_connect` download `hermes-channel-chija` from GitHub Releases into `~/.config/chija/hermes-channel/bin/`.
@@ -38,6 +38,7 @@ export HERMES_CHIJA_CONNECTOR_BIN="$PWD/bin/hermes-channel-chija"
 | Tool | Role |
 |------|------|
 | `chija_connect` | Device Auth → save bindings → auto-start WSS sidecar |
-| `chija_status` | Bindings + connector binary + running pid |
+| `chija_file_attach` | Upload a file and attach it to a kanban card or chat message |
+| `chija_board_card_move` | Move a card to a column or another board when EDIT is allowed |
 
 See `docs/ops/chija-agent-connector-releases.md`.

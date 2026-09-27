@@ -8,9 +8,11 @@ from typing import Any
 
 try:
     from . import connect as chija_connect_impl
+    from . import files as chija_files_impl
     from . import supervisor as supervisor_impl
 except ImportError:  # loaded as a flat plugin directory
     import connect as chija_connect_impl  # type: ignore
+    import files as chija_files_impl  # type: ignore
     import supervisor as supervisor_impl  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -171,6 +173,148 @@ CHIJA_STATUS_SCHEMA = {
 }
 
 
+def _tool_json(fn, params: dict[str, Any]) -> str:
+    try:
+        return json.dumps(fn(params), ensure_ascii=False)
+    except Exception as err:  # noqa: BLE001 — tool result, never a traceback with secrets
+        return json.dumps({"ok": False, "error": str(err)}, ensure_ascii=False)
+
+
+def _handle_file_upload(params: dict[str, Any], **kwargs: Any) -> str:
+    del kwargs
+    return _tool_json(
+        lambda p: chija_files_impl.upload_local_file(
+            str(p.get("filePath") or p.get("file_path") or ""),
+            str(p.get("profile") or "") or None,
+            str(p.get("idempotencyKey") or p.get("idempotency_key") or "") or None,
+        ),
+        params,
+    )
+
+
+def _handle_attachment_add(params: dict[str, Any], **kwargs: Any) -> str:
+    del kwargs
+    return _tool_json(
+        lambda p: chija_files_impl.add_attachment(
+            int(p.get("fileId") or p.get("file_id") or 0),
+            str(p.get("targetType") or p.get("target_type") or ""),
+            str(p.get("targetId") or p.get("target_id") or ""),
+            str(p.get("profile") or "") or None,
+            str(p.get("idempotencyKey") or p.get("idempotency_key") or "") or None,
+        ),
+        params,
+    )
+
+
+def _handle_file_attach(params: dict[str, Any], **kwargs: Any) -> str:
+    del kwargs
+    return _tool_json(
+        lambda p: chija_files_impl.upload_and_attach(
+            str(p.get("filePath") or p.get("file_path") or ""),
+            str(p.get("targetType") or p.get("target_type") or ""),
+            str(p.get("targetId") or p.get("target_id") or ""),
+            str(p.get("profile") or "") or None,
+            str(p.get("idempotencyKey") or p.get("idempotency_key") or "") or None,
+        ),
+        params,
+    )
+
+
+def _handle_board_card_move(params: dict[str, Any], **kwargs: Any) -> str:
+    del kwargs
+    board = params.get("targetBoardId", params.get("target_board_id", params.get("boardId")))
+    return _tool_json(
+        lambda p: chija_files_impl.move_card(
+            int(p.get("cardId") or p.get("card_id") or 0),
+            int(p.get("columnId") or p.get("column_id") or 0),
+            int(board) if board not in (None, "") else None,
+            str(p.get("profile") or "") or None,
+            str(p.get("idempotencyKey") or p.get("idempotency_key") or "") or None,
+        ),
+        params,
+    )
+
+
+CHIJA_FILE_UPLOAD_SCHEMA = {
+    "name": "chija_file_upload",
+    "description": (
+        "Upload a local file into the ChiJa workspace as this Agent Member. "
+        "Returns fileId. Use an absolute path. Does not attach the file by itself."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "filePath": {"type": "string", "description": "Absolute local path"},
+            "profile": {"type": "string", "description": "Hermes profile when several bindings exist"},
+            "idempotencyKey": {"type": "string"},
+        },
+        "required": ["filePath"],
+    },
+}
+
+CHIJA_ATTACHMENT_ADD_SCHEMA = {
+    "name": "chija_attachment_add",
+    "description": (
+        "Attach an uploaded ChiJa file to a kanban card or chat message. "
+        "targetType is KANBAN_CARD or CHAT_MESSAGE. Requires EDIT on that space."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "fileId": {"type": "integer"},
+            "targetType": {"type": "string"},
+            "targetId": {"type": "string"},
+            "profile": {"type": "string"},
+            "idempotencyKey": {"type": "string"},
+        },
+        "required": ["fileId", "targetType", "targetId"],
+    },
+}
+
+CHIJA_FILE_ATTACH_SCHEMA = {
+    "name": "chija_file_attach",
+    "description": (
+        "Upload a local file and attach it in one step. "
+        "Kanban: targetType=KANBAN_CARD and targetId=card id. "
+        "Chat: targetType=CHAT_MESSAGE and targetId=message id. "
+        "Use this when a person would attach a file. Do not use bot tokens or curl."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "filePath": {"type": "string"},
+            "targetType": {"type": "string"},
+            "targetId": {"type": "string"},
+            "profile": {"type": "string"},
+            "idempotencyKey": {"type": "string"},
+        },
+        "required": ["filePath", "targetType", "targetId"],
+    },
+}
+
+CHIJA_BOARD_CARD_MOVE_SCHEMA = {
+    "name": "chija_board_card_move",
+    "description": (
+        "Move a kanban card the way a member with EDIT can. "
+        "columnId is the destination column. "
+        "Set targetBoardId only to move the card onto another board in the same workspace; "
+        "EDIT is required on both boards. Use this when a person must approve or decide, "
+        "and that work lives on another board or column."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "cardId": {"type": "integer"},
+            "columnId": {"type": "integer"},
+            "targetBoardId": {"type": "integer"},
+            "profile": {"type": "string"},
+            "idempotencyKey": {"type": "string"},
+        },
+        "required": ["cardId", "columnId"],
+    },
+}
+
+
 def register(ctx: Any) -> None:
     ctx.register_tool(
         name="chija_connect",
@@ -186,6 +330,19 @@ def register(ctx: Any) -> None:
         handler=_handle_chija_status,
         description=CHIJA_STATUS_SCHEMA["description"],
     )
+    for schema, handler in (
+        (CHIJA_FILE_UPLOAD_SCHEMA, _handle_file_upload),
+        (CHIJA_ATTACHMENT_ADD_SCHEMA, _handle_attachment_add),
+        (CHIJA_FILE_ATTACH_SCHEMA, _handle_file_attach),
+        (CHIJA_BOARD_CARD_MOVE_SCHEMA, _handle_board_card_move),
+    ):
+        ctx.register_tool(
+            name=schema["name"],
+            toolset="chija",
+            schema=schema,
+            handler=handler,
+            description=schema["description"],
+        )
 
     used_bg = supervisor_impl.try_register_background_service(ctx)
     if supervisor_impl.has_bindings():
@@ -196,6 +353,7 @@ def register(ctx: Any) -> None:
             logger.warning("ChiJa connector auto-start on register failed: %s", err)
 
     logger.info(
-        "ChiJa Hermes plugin registered (chija_connect, chija_status, bg_service=%s)",
+        "ChiJa Hermes plugin registered "
+        "(chija_connect, chija_status, chija_file_attach, chija_board_card_move, bg_service=%s)",
         used_bg,
     )
