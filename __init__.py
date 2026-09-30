@@ -239,7 +239,8 @@ CHIJA_FILE_UPLOAD_SCHEMA = {
     "name": "chija_file_upload",
     "description": (
         "Upload a local file into the ChiJa workspace as this Agent Member. "
-        "Returns fileId. Use an absolute path. Does not attach the file by itself."
+        "Returns fileId. Use an absolute path. Does not attach the file by itself. "
+        "Upload only the finished file. Do not upload drafts, empty files, or intermediate revisions."
     ),
     "parameters": {
         "type": "object",
@@ -275,6 +276,7 @@ CHIJA_FILE_ATTACH_SCHEMA = {
     "name": "chija_file_attach",
     "description": (
         "Upload a local file and attach it in one step. "
+        "Call it once with the finished file. Do not upload drafts, empty files, or intermediate revisions. "
         "Kanban: targetType=KANBAN_CARD and targetId=card id. "
         "Chat: targetType=CHAT_MESSAGE and targetId=message id. "
         "Use this when a person would attach a file. Do not use bot tokens or curl."
