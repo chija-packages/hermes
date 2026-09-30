@@ -17,7 +17,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 CONNECTOR_NAME = "hermes-channel-chija"
-DEFAULT_RELEASE_TAG = "v0.2.11"
+DEFAULT_RELEASE_TAG = "v0.2.12"
 DEFAULT_RELEASE_BASE = "https://github.com/chija-packages/hermes/releases/download"
 
 
