@@ -13,7 +13,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-PLUGIN_VERSION = "0.2.12"
+PLUGIN_VERSION = "0.2.13"
 CAPABILITIES = [
     "invocation.accept",
     "run.progress",

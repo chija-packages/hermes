@@ -178,6 +178,26 @@ def upload_and_attach(file_path: str, target_type: str, target_id: str,
     return {"ok": True, "upload": uploaded, "attachment": attached}
 
 
+def create_card(board_id: int, column_id: int, title: str, description: str | None = None,
+                profile: str | None = None, idempotency_key: str | None = None) -> dict[str, Any]:
+    if board_id <= 0 or column_id <= 0:
+        raise RuntimeError("boardId and columnId are required")
+    text = (title or "").strip()
+    if not text:
+        raise RuntimeError("title is required")
+    body: dict[str, Any] = {"columnId": column_id, "title": text}
+    if description:
+        body["description"] = description
+    cred = load_credential(profile)
+    key = (idempotency_key or "").strip() or str(uuid.uuid4())
+    created = _api_json(
+        cred, "POST", f"/api/agent/v1/boards/{board_id}/cards", body, key,
+    )
+    created["ok"] = True
+    created["idempotencyKey"] = key
+    return created
+
+
 def move_card(card_id: int, column_id: int, target_board_id: int | None = None,
               profile: str | None = None, idempotency_key: str | None = None) -> dict[str, Any]:
     if card_id <= 0 or column_id <= 0:

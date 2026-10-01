@@ -220,6 +220,21 @@ def _handle_file_attach(params: dict[str, Any], **kwargs: Any) -> str:
     )
 
 
+def _handle_board_card_create(params: dict[str, Any], **kwargs: Any) -> str:
+    del kwargs
+    return _tool_json(
+        lambda p: chija_files_impl.create_card(
+            int(p.get("boardId") or p.get("board_id") or 0),
+            int(p.get("columnId") or p.get("column_id") or 0),
+            str(p.get("title") or ""),
+            str(p.get("description") or "") or None,
+            str(p.get("profile") or "") or None,
+            str(p.get("idempotencyKey") or p.get("idempotency_key") or "") or None,
+        ),
+        params,
+    )
+
+
 def _handle_board_card_move(params: dict[str, Any], **kwargs: Any) -> str:
     del kwargs
     board = params.get("targetBoardId", params.get("target_board_id", params.get("boardId")))
@@ -294,6 +309,28 @@ CHIJA_FILE_ATTACH_SCHEMA = {
     },
 }
 
+CHIJA_BOARD_CARD_CREATE_SCHEMA = {
+    "name": "chija_board_card_create",
+    "description": (
+        "Create a kanban card the way a member with EDIT can. "
+        "boardId is the board, columnId is the column, title is required. "
+        "Creating a card does not start Agent work."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "boardId": {"type": "integer"},
+            "columnId": {"type": "integer"},
+            "title": {"type": "string"},
+            "description": {"type": "string"},
+            "profile": {"type": "string"},
+            "idempotencyKey": {"type": "string"},
+        },
+        "required": ["boardId", "columnId", "title"],
+    },
+}
+
+
 CHIJA_BOARD_CARD_MOVE_SCHEMA = {
     "name": "chija_board_card_move",
     "description": (
@@ -336,6 +373,7 @@ def register(ctx: Any) -> None:
         (CHIJA_FILE_UPLOAD_SCHEMA, _handle_file_upload),
         (CHIJA_ATTACHMENT_ADD_SCHEMA, _handle_attachment_add),
         (CHIJA_FILE_ATTACH_SCHEMA, _handle_file_attach),
+        (CHIJA_BOARD_CARD_CREATE_SCHEMA, _handle_board_card_create),
         (CHIJA_BOARD_CARD_MOVE_SCHEMA, _handle_board_card_move),
     ):
         ctx.register_tool(
@@ -356,6 +394,6 @@ def register(ctx: Any) -> None:
 
     logger.info(
         "ChiJa Hermes plugin registered "
-        "(chija_connect, chija_status, chija_file_attach, chija_board_card_move, bg_service=%s)",
+        "(chija_connect, chija_status, chija_file_attach, chija_board_card_create, chija_board_card_move, bg_service=%s)",
         used_bg,
     )

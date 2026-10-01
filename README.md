@@ -41,6 +41,7 @@ export HERMES_CHIJA_CONNECTOR_BIN="$PWD/bin/hermes-channel-chija"
 |------|------|
 | `chija_connect` | Device Auth → save bindings → auto-start WSS sidecar |
 | `chija_file_attach` | Upload a file and attach it to a kanban card or chat message |
+| `chija_board_card_create` | Create a kanban card when EDIT is allowed |
 | `chija_board_card_move` | Move a card to a column or another board when EDIT is allowed |
 
 See `docs/ops/chija-agent-connector-releases.md`.
